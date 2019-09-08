@@ -1,0 +1,8 @@
+Sys.setenv(SPARK_HOME = "/usr/local/spark-2.2.2-bin-hadoop2.6")
+#Example: https://spark.apache.org/docs/latest/sparkr.html
+library(SparkR, lib.loc = "$SPARK_HOME/R/lib")
+sc = sparkR.init(master="spark://QTLmaster:7077",sparkHome = "$SPARK_HOME") # Change the master name (QTLmaster) with the correct name.
+sqlContext = sparkRSQL.init(sc)
+df <- createDataFrame(sqlContext, faithful)
+#Displays the content of the DataFrame to stdout
+head(df)

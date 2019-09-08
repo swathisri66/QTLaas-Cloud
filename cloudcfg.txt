@@ -1,0 +1,12 @@
+#cloud-config
+
+apt_update: true
+apt_upgrade: true
+packages:
+ - python-pip
+ - python-dev
+ - build-essential
+byobu_default: system
+
+runcmd:
+ - pip install Flask
