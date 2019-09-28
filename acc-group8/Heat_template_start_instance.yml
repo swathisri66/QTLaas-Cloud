@@ -1,0 +1,215 @@
+
+
+heat_template_version: 2013-05-23
+
+description: template to deploy a QTL as a Service with Ansible Master, Spark Master and Spark Worker
+
+# Declare parameters 
+parameters:
+
+  image1:
+    type: string
+    label: Image name or ID
+    description: Image Ansible Master
+    default: 382d510f-f56f-48c2-a94f-474902ac3c57
+
+  image2:
+    type: string
+    label: Image name or ID
+    description: Image Spark Master
+    default: 98692619-5859-452c-a9cd-62f6080299cb
+
+  image3:
+    type: string
+    label: Image name or ID
+    description: Image Spark Worker
+    default: e68b26fa-6285-4a3b-b0d3-d752c53c5f14
+
+
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used
+    default: ACCHT18.normal
+
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: group8key
+
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Public network with floating IP addresses.
+    default: Public External IPv4 Network
+
+  cluster_sg:
+    type: string
+    label: Security group
+    description: Our QTLaaS security group
+    default: 45d66251-7c42-4b81-9a41-5c1eef18b57a
+
+# Resource allocation
+resources:
+  private_network:
+    type: OS::Neutron::Net
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_network }
+      cidr: 10.10.10.0/24
+      dns_nameservers:
+        - 130.238.164.6 
+        - 130.238.4.133 
+        - 130.238.7.10
+        - 130.239.1.90
+        - 129.16.1.53
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_network }
+
+  router-interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: private_subnet }
+
+  instance_port0:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_param: cluster_sg } 
+
+  instance_port1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_param: cluster_sg } 
+
+  instance_port2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_param: cluster_sg } 
+ #masters 
+ 
+  spark-master:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image2 }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      # security_groups:
+      #   - { get_param: cluster_sg }
+      networks:
+        - port: { get_resource: instance_port0 }         
+      user_data: |
+        #!/bin/sh
+        echo "Hello, World!"
+        apt-add-repository -y ppa:ansible/ansible
+        apt-get update -y
+        apt-get upgrade -y
+        apt-get install -y ansible
+        runuser -l ubuntu -c 'jupyter notebook --ip=0.0.0.0 --port=60060 &'
+        sysctl -p
+      user_data_format: RAW
+
+  ansible-master:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image1 }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      # security_groups:
+      #   - { get_param: cluster_sg }
+      networks:
+        - port: { get_resource: instance_port1 }
+      user_data: |
+        #!/bin/sh
+        echo "Hello, World!"
+        apt-get update -y
+        apt-get upgrade -y
+      user_data_format: RAW
+      
+      
+      #workers 
+      
+  worker-instance0:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image3 }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      # security_groups:
+      #   - { get_param: cluster_sg }
+      networks:
+        - port: { get_resource: instance_port2 }
+      user_data: |
+        #!/bin/sh
+        echo "Hello, World!"
+        apt-get update -y
+        apt-get upgrade -y
+        sysctl -p
+      user_data_format: RAW
+      
+
+
+  floating_ip0:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc0:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip0 }
+      port_id: { get_resource: instance_port0 } 
+
+  floating_ip1:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc1:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip1 }
+      port_id: { get_resource: instance_port1 } 
+
+# Output in case of successful booting
+outputs:
+
+  spark_name:
+    description: Name of the spark master
+    value: { get_attr: [spark-master, name] }
+  spark_ip:
+    description: IP address of the instance
+    value: { get_attr: [floating_ip0, floating_ip_address] }
+  spark_private_ip:
+    description: privateIP address of the instance
+    value: { get_attr: [spark-master, first_address] }
+  
+  ansible_name:
+    description: Name of the ansible master
+    value: { get_attr: [ansible-master, name] }
+  ansible_ip:
+    description: IP address of the instance
+    value: { get_attr: [floating_ip1, floating_ip_address] }
+  ansible_private_ip:
+    description: privateIP address of the instance
+    value: { get_attr: [ansible-master, first_address] }
+  
+  worker_name:
+    description: Name of the spark worker
+    value: { get_attr: [worker-instance0, name] }
+  worker_ip:
+    description: IP address of the instance
+    value: { get_attr: [worker-instance0, first_address] }
+  
